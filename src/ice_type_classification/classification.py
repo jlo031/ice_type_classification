@@ -49,7 +49,7 @@ def classify_S1_image_from_feature_folder(
     logger.remove()
     logger.add(sys.stderr, level=loglevel)
 
-    logger.info('Classifying ice types in input image')
+    logger.info('Classifying input image')
 
 # -------------------------------------------------------------------------- #
 

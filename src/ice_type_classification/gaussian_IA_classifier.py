@@ -6,10 +6,12 @@ Multi-dimensional Gaussian classifier with and without per-class IA variation
 
 from loguru import logger
 
+import pickle
+
 import numpy as np
 
 from scipy.stats import multivariate_normal as mvn
-
+from sklearn.linear_model import LinearRegression
 
 # -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
@@ -50,7 +52,7 @@ class gaussian_IA_clf:
         :return self.b: slope covariance matrix for each class [n_class,d,d]
         """
 
-        from sklearn.linear_model import LinearRegression
+        ##from sklearn.linear_model import LinearRegression
 
 
         # assert correct dimensionality of X_train
@@ -428,10 +430,7 @@ def write_classifier_dict_2_pickle(output_file, classifier_dict):
 
     :param output_file: pickle output file
     :param classifier_dict: classifier dictionary
-     """
-
-    import pickle
-
+    """
     with open(output_file,'wb') as f: 
         pickle.dump(classifier_dict,f)
 
@@ -445,9 +444,7 @@ def read_classifier_dict_from_pickle(input_file):
 
     :param input_file: pickle input file
     :return classifier_dict: classifier dictionary
-     """
-
-    import pickle
+    """
 
     with open(input_file,'rb') as f: 
         classifier_dictionary = pickle.load(f)

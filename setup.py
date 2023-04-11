@@ -18,7 +18,7 @@ setup(
         'scipy',
         'ipython',
         'loguru',
-        'lxml',
+        'scikit-learn',
     ],
     packages = find_packages(where='src'),
     package_dir = {'': 'src'},
@@ -28,4 +28,4 @@ setup(
         ]
     },
     include_package_data=True,
-
+)
