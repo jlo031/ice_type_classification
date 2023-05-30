@@ -100,6 +100,18 @@ def classify_S1_image_from_feature_folder(
 
 # -------------------------------------------------------------------------- #
 
+    # get system byte order for memory mapping
+
+    system_byte_order = sys.byteorder
+
+    # convert system_byte_order to integer
+    if system_byte_order == 'little':
+        system_byte_order = 0
+    elif system_byte_order == 'big':
+        system_byte_order = 1
+
+# -------------------------------------------------------------------------- #
+
     # GET BASIC CLASSIFIER INFO
 
     # load classifier dictionary
@@ -279,7 +291,40 @@ def classify_S1_image_from_feature_folder(
         logger.debug('Setting valid_mask to 1')
         valid_mask = np.ones(N).astype(int)
 
+
+
+
+
     for f in required_features:
+
+        logger.debug(f'Checking byte order for current feature: {f}')
+
+        # get current feature byte order
+        hdr_file = feat_folder/f'{f}.hdr'
+        with open(hdr_file.as_posix()) as ff:
+            header_contents = ff.read().splitlines()
+        for header_line in header_contents:
+            if 'byte order' in header_line:
+                logger.debug(header_line)
+                img_byte_order = int(header_line[-1])
+
+
+        # check if img and system byte orders match
+        if img_byte_order == system_byte_order:
+            logger.debug('Image byte order matches system byte order for current feature')
+            data_dict[f] = np.memmap(
+                f'{feat_folder.as_posix()}/{f}.img', 
+                dtype=np.float32, mode='r', shape=(N)
+            )
+        elif img_byte_order != system_byte_order:
+            logger.debug('Image byte order does not match system byte order for current feature')
+            data_dict[f] = np.memmap(
+                f'{feat_folder.as_posix()}/{f}.img', 
+                dtype=np.float32, mode='r', shape=(N)
+            ).byteswap()
+
+
+        """
         # GLCM features currently require memory mapping withoug byteswap
         # texture features require byteswap
         # this should be fixed at some point
@@ -294,6 +339,7 @@ def classify_S1_image_from_feature_folder(
                 f'{feat_folder.as_posix()}/{f}.img', 
                 dtype=np.float32, mode='r', shape=(N)
             ).byteswap()
+        """
 
 # -------------------------------------------------------------------------- #
 
