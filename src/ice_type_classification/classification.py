@@ -270,26 +270,101 @@ def classify_S1_image_from_feature_folder(
     # logger
     logger.info('Memory mapping required data')
 
+
     # memory map IA if required, set empty otherwise
+
     if clf_type=='gaussian_IA':
-        logger.debug('Memory mapping IA')
-        IA_mask = np.memmap(
-            (feat_folder / 'IA.img').as_posix(), 
-            dtype=np.float32, mode='r', shape=(N)
-        ).byteswap()
+
+        logger.debug(f'Checking byte order for IA')
+
+        # get IA byte order
+        hdr_file = feat_folder/f'IA.hdr'
+        with open(hdr_file.as_posix()) as ff:
+            header_contents = ff.read().splitlines()
+        for header_line in header_contents:
+            if 'byte order' in header_line:
+                logger.debug(header_line)
+                img_byte_order = int(header_line[-1])
+
+        # check if img and system byte orders match
+        if img_byte_order == system_byte_order:
+            logger.debug('Image byte order matches system byte order for IA')
+            logger.debug('Memory mapping IA')
+            IA_mask = np.memmap(
+                (feat_folder / 'IA.img').as_posix(), 
+                dtype=np.float32, mode='r', shape=(N)
+            )
+        elif img_byte_order != system_byte_order:
+            logger.debug('Image byte order does not match system byte order for IA')
+            logger.debug('Memory mapping IA')
+            data_dict[f] = np.memmap(
+                (feat_folder / 'IA.img').as_posix(), 
+                dtype=np.float32, mode='r', shape=(N)
+            ).byteswap()
+
     else:
         IA_mask = np.zeros(N).astype(int)
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     # memory map valid mask if required, set valid mask to 1 otherwise
+
     if valid_mask:
-        logger.debug('Memory mapping valid_mask')
-        valid_mask = np.memmap(
-            (feat_folder / 'valid.img').as_posix(), 
-            dtype=valid_mask_data_type, mode='r', shape=(N)
-        ).byteswap()
+
+        logger.debug(f'Checking byte order for valid mask')
+
+        # get valid mask byte order
+        hdr_file = feat_folder/f'valid.hdr'
+        with open(hdr_file.as_posix()) as ff:
+            header_contents = ff.read().splitlines()
+        for header_line in header_contents:
+            if 'byte order' in header_line:
+                logger.debug(header_line)
+                img_byte_order = int(header_line[-1])
+
+
+
+
+        # check if img and system byte orders match
+        if img_byte_order == system_byte_order:
+            logger.debug('Image byte order matches system byte order for valid mask')
+            logger.debug('Memory mapping valid mask')
+            IA_mask = np.memmap(
+                (feat_folder / 'valid.img').as_posix(), 
+                dtype=valid_mask_data_type, mode='r', shape=(N)
+            )
+        elif img_byte_order != system_byte_order:
+            logger.debug('Image byte order does not match system byte order for valid mask')
+            logger.debug('Memory mapping valid mask')
+            data_dict[f] = np.memmap(
+                (feat_folder / 'valid.img').as_posix(), 
+                dtype=valid_mask_data_type, mode='r', shape=(N)
+            ).byteswap()
+
     else:
         logger.debug('Setting valid_mask to 1')
         valid_mask = np.ones(N).astype(int)
+
+
+
+
+
+
+
+
 
 
 
