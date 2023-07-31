@@ -19,6 +19,10 @@ from osgeo import gdal
 
 import ice_type_classification.gaussian_IA_classifier as gia
 
+
+from ice_type_classification.S1_uncertainty_2023 import Mahalanobis_distance
+
+
 # -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
 
@@ -81,15 +85,19 @@ def classify_S1_image_from_feature_folder(
     result_path     = result_folder / f'{result_basename}.img'
     result_path_hdr = result_folder / f'{result_basename}.hdr'
 
-    # for Kristian (fix later)
-    ##result_path_Mahal     = result_folder / f'{result_basename}_Mahal.img'
-    ##result_path_hdr_Mahal = result_folder / f'{result_basename}_Mahal.hdr'
-    ##result_path_probs     = result_folder / f'{result_basename}_probs.img'
-    ##result_path_hdr_probs = result_folder / f'{result_basename}_probs.hdr'
+    # for uncertainty estimate
+    result_path_mahal     = result_folder / f'{f_base}_mahal.img'
+    result_path_mahal_hdr = result_folder / f'{f_base}_mahal.hdr'
+    result_path_probs     = result_folder / f'{f_base}_probs.img'
+    result_path_probs_hdr = result_folder / f'{f_base}_probs.hdr'
 
-    logger.debug(f'result_path: {result_path}')
+    logger.debug(f'result_path:       {result_path}')
+    logger.debug(f'result_path_mahal: {result_path_mahal}')
+    logger.debug(f'result_path_probs: {result_path_probs}')
 
-    # check if outfile already exists
+
+
+    # check if main outfile already exists
     if result_path.is_file() and not overwrite:
         logger.info('Output files already exist, use `-overwrite` to force')
         return
@@ -97,6 +105,11 @@ def classify_S1_image_from_feature_folder(
         logger.info('Removing existing output file and classifying again')
         result_path.unlink()
         result_path_hdr.unlink()
+        result_path_mahal.unlink(missing_ok=True)
+        result_path_mahal_hdr.unlink(missing_ok=True)
+        result_path_probs.unlink(missing_ok=True)
+        result_path_probs_hdr.unlink(missing_ok=True)
+
 
 # -------------------------------------------------------------------------- #
 
@@ -246,11 +259,24 @@ def classify_S1_image_from_feature_folder(
         logger.debug('Setting up classifier object from these parameters')
         clf = gia.make_gaussian_IA_clf_object_from_params_dict(classifier_dict['gaussian_IA_params'])
 
+        # for uncertainties
+        mu_vec_all_classes   = classifier_dict['gaussian_IA_params']['mu']
+        cov_mat_all_classes = classifier_dict['gaussian_IA_params']['Sigma']
+        n_classes            = int(classifier_dict['gaussian_IA_params']['n_class'])
+        IA_0                 = classifier_dict['gaussian_IA_params']['IA_0']
+        IA_slope             = classifier_dict['gaussian_IA_params']['b']
+
+
     elif clf_type =='gaussian':
         logger.debug(f'clf_valid_mask_data_typetype: {clf_type}')
         logger.debug('classifier_dict only contains clf parameters')
         logger.debug('Setting up classifier object from these parameters')
         clf = gia.make_gaussian_clf_object_from_params_dict(classifier_dict['gaussian_params'])
+
+        # for uncertainties
+        mu_vec_all_classes   = classifier_dict['gaussian_params']['mu']
+        cov_vmat_all_classes = classifier_dict['gaussian_params']['Sigma']
+        n_classes            = int(classifier_dict['gaussian_params']['n_class'])
 
     else:
         ##clf = classifier_dict['clf_object']
@@ -420,8 +446,12 @@ def classify_S1_image_from_feature_folder(
 
     # initialize labels and probabilities
     labels_img = np.zeros(N)
-    ##Mahal_img  = np.zeros(N)
-    ##probs_img  = np.zeros(N)
+
+    # for uncertainties
+    mahal_img  = np.zeros((N,n_classes))
+    mahal_img.fill(np.nan)
+    probs_img  = np.zeros((N,n_classes))
+    probs_img.fill(np.nan)
 
     # find number of blocks from block_size
     n_blocks   = int(np.ceil(N/block_size))
@@ -467,18 +497,18 @@ def classify_S1_image_from_feature_folder(
         IA_block_valid = IA_block[valid_block==1]
 
 
-        # calculate Mahalanobis distance for each class
-        ##Mahal_img[idx_start:idx_end][valid_block==1] = Mahalanobis_distance(X_block_valid, classifier_dict)
-
-
         # predict labels where valid==1
         if clf_type == 'gaussian_IA':
-            labels_img[idx_start:idx_end][valid_block==1], dummy = \
-                clf.predict(X_block_valid, IA_block_valid)
+            labels_img[idx_start:idx_end][valid_block==1], probs_img[idx_start:idx_end][valid_block==1] = clf.predict(X_block_valid, IA_block_valid)
+
+            # for uncertainties
+            mahal_img[idx_start:idx_end][valid_block==1] = Mahalanobis_distance(X_block_valid, mu_vec_all_classes, cov_mat_all_classes, IA_test=IA_block_valid, IA_0=IA_0, IA_slope=IA_slope)
 
         elif clf_type == 'gaussian':
-            labels_img[idx_start:idx_end][valid_block==1], dummy = \
-                clf.predict(X_block_valid)
+            labels_img[idx_start:idx_end][valid_block==1],probs_img[idx_start:idx_end][valid_block==1] = clf.predict(X_block_valid)
+
+            # for uncertainties
+            mahal_img[idx_start:idx_end][valid_block==1] = Mahalanobis_distance(X_block_valid, mu_vec_all_classes, cov_mat_all_classes)
 
         else:
             logger.error('This clf type is not implemented yet')
