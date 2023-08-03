@@ -336,7 +336,7 @@ def classify_S1_image_from_feature_folder(
         elif img_byte_order != system_byte_order:
             logger.debug('Image byte order does not match system byte order for IA')
             logger.debug('Memory mapping IA')
-            data_dict[f] = np.memmap(
+            IA_mask = np.memmap(
                 (feat_folder / 'IA.img').as_posix(), 
                 dtype=np.float32, mode='r', shape=(N)
             ).byteswap()
@@ -366,14 +366,14 @@ def classify_S1_image_from_feature_folder(
         if img_byte_order == system_byte_order:
             logger.debug('Image byte order matches system byte order for valid mask')
             logger.debug('Memory mapping valid mask')
-            IA_mask = np.memmap(
+            valid_mask = np.memmap(
                 (feat_folder / 'valid.img').as_posix(), 
                 dtype=valid_mask_data_type, mode='r', shape=(N)
             )
         elif img_byte_order != system_byte_order:
             logger.debug('Image byte order does not match system byte order for valid mask')
             logger.debug('Memory mapping valid mask')
-            data_dict[f] = np.memmap(
+            valid_mask = np.memmap(
                 (feat_folder / 'valid.img').as_posix(), 
                 dtype=valid_mask_data_type, mode='r', shape=(N)
             ).byteswap()
