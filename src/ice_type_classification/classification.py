@@ -19,6 +19,8 @@ from osgeo import gdal
 
 import ice_type_classification.gaussian_IA_classifier as gia
 
+import ice_type_classification.uncertainty_utils as uncertainty_utils
+
 # -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
 
@@ -26,6 +28,7 @@ def classify_S1_image_from_feature_folder(
     feat_folder,
     result_folder,
     classifier_model_path,
+    uncertainties = True,
     valid_mask = False,
     block_size = 1e6,
     overwrite = False,
@@ -39,6 +42,7 @@ def classify_S1_image_from_feature_folder(
     feat_folder : path to input feature folder
     result_folder : path to result folder where labels file is placed
     classifier_model_path : path to pickle file with classifier model dict
+    uncertainties : estimate apost and mahal uncertainties (default True)
     valid_mask : use valid mask
     block_size : number of pixels for block-wise processing (default=1e6)
     overwrite : overwrite existing files (default=False)
@@ -52,6 +56,8 @@ def classify_S1_image_from_feature_folder(
     logger.info('Classifying input image')
 
 # -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
 
     # convert folder strings to paths
     feat_folder           = pathlib.Path(feat_folder).expanduser().absolute()
@@ -61,8 +67,8 @@ def classify_S1_image_from_feature_folder(
     # convert block_size string to integer
     block_size = int(block_size)
 
-    logger.debug(f'feat_folder:           {feat_folder}')
-    logger.debug(f'result_folder:         {result_folder}')
+    logger.debug(f'feat_folder: {feat_folder}')
+    logger.debug(f'result_folder: {result_folder}')
     logger.debug(f'classifier_model_path: {classifier_model_path}')
 
     if not feat_folder.is_dir():
@@ -76,20 +82,22 @@ def classify_S1_image_from_feature_folder(
     # get input basename from feat_folder
     f_base = feat_folder.stem
 
+    logger.debug(f'f_base: {f_base}')
+
     # define output file names and paths
     result_basename = f_base + '_labels'
     result_path     = result_folder / f'{result_basename}.img'
     result_path_hdr = result_folder / f'{result_basename}.hdr'
+    result_path_mahal     = result_folder / f'{f_base}_mahal_uncertainty.img'
+    result_path_mahal_hdr = result_folder / f'{f_base}_mahal_uncertainty.hdr'
+    result_path_apost     = result_folder / f'{f_base}_apost_uncertainty.img'
+    result_path_apost_hdr = result_folder / f'{f_base}_apost_uncertainty.hdr'
 
-    # for Kristian (fix later)
-    ##result_path_Mahal     = result_folder / f'{result_basename}_Mahal.img'
-    ##result_path_hdr_Mahal = result_folder / f'{result_basename}_Mahal.hdr'
-    ##result_path_probs     = result_folder / f'{result_basename}_probs.img'
-    ##result_path_hdr_probs = result_folder / f'{result_basename}_probs.hdr'
+    logger.debug(f'result_path:       {result_path}')
+    logger.debug(f'result_path_mahal: {result_path_mahal}')
+    logger.debug(f'result_path_apost: {result_path_apost}')
 
-    logger.debug(f'result_path: {result_path}')
-
-    # check if outfile already exists
+    # check if main outfile already exists
     if result_path.is_file() and not overwrite:
         logger.info('Output files already exist, use `-overwrite` to force')
         return
@@ -97,7 +105,13 @@ def classify_S1_image_from_feature_folder(
         logger.info('Removing existing output file and classifying again')
         result_path.unlink()
         result_path_hdr.unlink()
+        result_path_mahal.unlink(missing_ok=True)
+        result_path_mahal_hdr.unlink(missing_ok=True)
+        result_path_apost.unlink(missing_ok=True)
+        result_path_apost_hdr.unlink(missing_ok=True)
 
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
 
     # get system byte order for memory mapping
@@ -110,6 +124,8 @@ def classify_S1_image_from_feature_folder(
     elif system_byte_order == 'big':
         system_byte_order = 1
 
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
 
     # GET BASIC CLASSIFIER INFO
@@ -131,9 +147,11 @@ def classify_S1_image_from_feature_folder(
     # get list of required features for classifier
     required_features = sorted(classifier_dict['required_features'])
 
-    logger.debug(f'clf_type:          {clf_type}')
-    logger.debug(f'required_features: {required_features}')
+    logger.info(f'clf_type: {clf_type}')
+    logger.info(f'required_features: {required_features}')
 
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
 
     # CHECK EXISTING AND REQUIRED FEATURES
@@ -153,6 +171,7 @@ def classify_S1_image_from_feature_folder(
     Nx = ds.RasterXSize
     Ny = ds.RasterYSize
     ds = []
+    logger.info(f'Read image dimensions: {Nx,Ny}')
 
 
     # check that all required features have same dimensions
@@ -165,6 +184,8 @@ def classify_S1_image_from_feature_folder(
             logger.error(f'Image dimensions of required features do not match')
             raise ValueError(f'Image dimensions of required features do not match')
 
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
 
     # CHECK VALID AND IA MASK IF REQUIRED
@@ -206,7 +227,6 @@ def classify_S1_image_from_feature_folder(
 
 
 
-
     if clf_type == 'gaussian_IA':
         logger.info('Classifier is using IA information')
 
@@ -230,15 +250,17 @@ def classify_S1_image_from_feature_folder(
         logger.info('Classifier is not using IA information')
 
 # -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
 
     # BUILD CLASSIFIER OBJECT ACCORDING TO CLASSIFIER DICT
 
     # check classifier type
     # for gaussian or gaussian_IA:
-    #   build the actual clf object from the saved parameters
+    #     - build the actual clf object from the saved parameters
     # for other types:
-    #    set the clf object directly from classifier_dict
-    #    import the necessary modules from sklearn
+    #      - set the clf object directly from classifier_dict
+    #      - import the necessary modules from sklearn
 
     if clf_type == 'gaussian_IA':
         logger.debug(f'clf_type: {clf_type}')
@@ -246,11 +268,26 @@ def classify_S1_image_from_feature_folder(
         logger.debug('Setting up classifier object from these parameters')
         clf = gia.make_gaussian_IA_clf_object_from_params_dict(classifier_dict['gaussian_IA_params'])
 
+        # for uncertainties
+        mu_vec_all_classes  = classifier_dict['gaussian_IA_params']['mu']
+        cov_mat_all_classes = classifier_dict['gaussian_IA_params']['Sigma']
+        n_classes           = int(classifier_dict['gaussian_IA_params']['n_class'])
+        n_features          = int(classifier_dict['gaussian_IA_params']['n_feat'])
+        IA_0                = classifier_dict['gaussian_IA_params']['IA_0']
+        IA_slope            = classifier_dict['gaussian_IA_params']['b']
+
+
     elif clf_type =='gaussian':
         logger.debug(f'clf_valid_mask_data_typetype: {clf_type}')
         logger.debug('classifier_dict only contains clf parameters')
         logger.debug('Setting up classifier object from these parameters')
         clf = gia.make_gaussian_clf_object_from_params_dict(classifier_dict['gaussian_params'])
+
+        # for uncertainties
+        mu_vec_all_classes   = classifier_dict['gaussian_params']['mu']
+        cov_vmat_all_classes = classifier_dict['gaussian_params']['Sigma']
+        n_classes            = int(classifier_dict['gaussian_params']['n_class'])
+        n_features          = int(classifier_dict['gaussian_params']['n_feat'])
 
     else:
         ##clf = classifier_dict['clf_object']
@@ -258,10 +295,12 @@ def classify_S1_image_from_feature_folder(
         raise NotImplementedError('This clf type is not implemented yet')
 
 # -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
 
-    # get image dimensions and total number of pixels)
-    shape  = (Ny, Nx)
-    N      = Nx*Ny
+    # get image dimensions and total number of pixels N
+    shape = (Ny, Nx)
+    N     = Nx*Ny
 
     # initialize data dict and/or data list
     data_dict = dict()
@@ -270,29 +309,78 @@ def classify_S1_image_from_feature_folder(
     # logger
     logger.info('Memory mapping required data')
 
+
     # memory map IA if required, set empty otherwise
+
     if clf_type=='gaussian_IA':
-        logger.debug('Memory mapping IA')
-        IA_mask = np.memmap(
-            (feat_folder / 'IA.img').as_posix(), 
-            dtype=np.float32, mode='r', shape=(N)
-        ).byteswap()
+
+        logger.debug(f'Checking byte order for IA')
+
+        # get IA byte order
+        hdr_file = feat_folder/f'IA.hdr'
+        with open(hdr_file.as_posix()) as ff:
+            header_contents = ff.read().splitlines()
+        for header_line in header_contents:
+            if 'byte order' in header_line:
+                logger.debug(header_line)
+                img_byte_order = int(header_line[-1])
+
+        # check if img and system byte orders match
+        if img_byte_order == system_byte_order:
+            logger.debug('Image byte order matches system byte order for IA')
+            logger.debug('Memory mapping IA')
+            IA_mask = np.memmap(
+                (feat_folder / 'IA.img').as_posix(), 
+                dtype=np.float32, mode='r', shape=(N)
+            )
+        elif img_byte_order != system_byte_order:
+            logger.debug('Image byte order does not match system byte order for IA')
+            logger.debug('Memory mapping IA')
+            IA_mask = np.memmap(
+                (feat_folder / 'IA.img').as_posix(), 
+                dtype=np.float32, mode='r', shape=(N)
+            ).byteswap()
+
     else:
         IA_mask = np.zeros(N).astype(int)
 
+
+
     # memory map valid mask if required, set valid mask to 1 otherwise
+
     if valid_mask:
-        logger.debug('Memory mapping valid_mask')
-        valid_mask = np.memmap(
-            (feat_folder / 'valid.img').as_posix(), 
-            dtype=valid_mask_data_type, mode='r', shape=(N)
-        ).byteswap()
+
+        logger.debug(f'Checking byte order for valid mask')
+
+        # get valid mask byte order
+        hdr_file = feat_folder/f'valid.hdr'
+        with open(hdr_file.as_posix()) as ff:
+            header_contents = ff.read().splitlines()
+        for header_line in header_contents:
+            if 'byte order' in header_line:
+                logger.debug(header_line)
+                img_byte_order = int(header_line[-1])
+
+
+        # check if img and system byte orders match
+        if img_byte_order == system_byte_order:
+            logger.debug('Image byte order matches system byte order for valid mask')
+            logger.debug('Memory mapping valid mask')
+            valid_mask = np.memmap(
+                (feat_folder / 'valid.img').as_posix(), 
+                dtype=valid_mask_data_type, mode='r', shape=(N)
+            )
+        elif img_byte_order != system_byte_order:
+            logger.debug('Image byte order does not match system byte order for valid mask')
+            logger.debug('Memory mapping valid mask')
+            valid_mask = np.memmap(
+                (feat_folder / 'valid.img').as_posix(), 
+                dtype=valid_mask_data_type, mode='r', shape=(N)
+            ).byteswap()
+
     else:
         logger.debug('Setting valid_mask to 1')
         valid_mask = np.ones(N).astype(int)
-
-
-
 
 
     for f in required_features:
@@ -323,30 +411,18 @@ def classify_S1_image_from_feature_folder(
                 dtype=np.float32, mode='r', shape=(N)
             ).byteswap()
 
-
-        """
-        # GLCM features currently require memory mapping withoug byteswap
-        # texture features require byteswap
-        # this should be fixed at some point
-        logger.debug(f'Memory mapping feature: {f}')
-        if 'GLCM' in f:
-            data_dict[f] = np.memmap(
-                f'{feat_folder.as_posix()}/{f}.img', 
-                dtype=np.float32, mode='r', shape=(N)
-            )
-        else:
-            data_dict[f] = np.memmap(
-                f'{feat_folder.as_posix()}/{f}.img', 
-                dtype=np.float32, mode='r', shape=(N)
-            ).byteswap()
-        """
-
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
 
     # initialize labels and probabilities
     labels_img = np.zeros(N)
-    ##Mahal_img  = np.zeros(N)
-    ##probs_img  = np.zeros(N)
+
+    # for uncertainties
+    mahal_img  = np.zeros((N,n_classes))
+    mahal_img.fill(np.nan)
+    probs_img  = np.zeros((N,n_classes))
+    probs_img.fill(np.nan)
 
     # find number of blocks from block_size
     n_blocks   = int(np.ceil(N/block_size))
@@ -360,6 +436,8 @@ def classify_S1_image_from_feature_folder(
     log_percs   = np.array([0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9])
     perc_blocks = np.ceil(np.array(n_blocks)*log_percs).astype(int)
 
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
 
     # loop over all blocks
@@ -392,18 +470,22 @@ def classify_S1_image_from_feature_folder(
         IA_block_valid = IA_block[valid_block==1]
 
 
-        # calculate Mahalanobis distance for each class
-        ##Mahal_img[idx_start:idx_end][valid_block==1] = Mahalanobis_distance(X_block_valid, classifier_dict)
-
-
         # predict labels where valid==1
         if clf_type == 'gaussian_IA':
-            labels_img[idx_start:idx_end][valid_block==1], dummy = \
-                clf.predict(X_block_valid, IA_block_valid)
+            labels_img[idx_start:idx_end][valid_block==1], probs_img[idx_start:idx_end][valid_block==1] = clf.predict(X_block_valid, IA_block_valid)
+
+            # for uncertainties
+            if uncertainties:
+                logger.debug('Estimating mahal_img for current block')
+                mahal_img[idx_start:idx_end][valid_block==1] = uncertainty_utils.get_mahalanobis_distance(X_block_valid, mu_vec_all_classes, cov_mat_all_classes, IA_test=IA_block_valid, IA_0=IA_0, IA_slope=IA_slope)
 
         elif clf_type == 'gaussian':
-            labels_img[idx_start:idx_end][valid_block==1], dummy = \
-                clf.predict(X_block_valid)
+            labels_img[idx_start:idx_end][valid_block==1],probs_img[idx_start:idx_end][valid_block==1] = clf.predict(X_block_valid)
+
+            # for uncertainties
+            if uncertainties:
+                logger.debug('Estimating mahal_img for current block')
+                mahal_img[idx_start:idx_end][valid_block==1] = uncertainty_utils.get_mahalanobis_distance(X_block_valid, mu_vec_all_classes, cov_mat_all_classes)
 
         else:
             logger.error('This clf type is not implemented yet')
@@ -413,31 +495,47 @@ def classify_S1_image_from_feature_folder(
 
     logger.info('Finished classification')
 
-    # reshape to image geometry
-    labels_img = np.reshape(labels_img,shape)
-    ##Mahal_img  = np.reshape(Mahal_img,shape)
-    ##probs_img  = np.reshape(probs_img,shape)
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
 
+    if uncertainties:
+        logger.info('Estimating apost and mahal uncertainties')
+        uncertainty_apost, uncertainty_mahal = uncertainty_utils.uncertainty(probs_img, mahal_img, n_features)
+
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
+
+    # reshape to image geometry
+    labels_img = np.reshape(labels_img, shape)
+
+    if uncertainties:
+        uncertainty_mahal  = np.reshape(uncertainty_mahal, shape)
+        uncertainty_apost  = np.reshape(uncertainty_apost, shape)
+
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
 
     # create result_folder if needed
     result_folder.mkdir(parents=True, exist_ok=True)
 
-    # get drivers
-    output = gdal.GetDriverByName('Envi').Create(result_path.as_posix(), Nx, Ny, 1, gdal.GDT_Byte)
-
-    ##output_Mahal = gdal.GetDriverByName('Envi').Create(result_path_Mahal.as_posix(), Nx, Ny, n_classes, gdal.GDT_Float32)
-
-    ##output_probs = gdal.GetDriverByName('Envi').Create(result_path_probs.as_posix(), Nx, Ny, n_classes, gdal.GDT_Float32)
+    output_labels = gdal.GetDriverByName('Envi').Create(result_path.as_posix(), Nx, Ny, 1, gdal.GDT_Byte)
+    output_labels.GetRasterBand(1).WriteArray(labels_img)
+    output_labels.FlushCache()
 
 
-    # write labels_img to band 1
-    output.GetRasterBand(1).WriteArray(labels_img)
+    if uncertainties:
 
-    # flush
-    output.FlushCache()
+        output_mahal = gdal.GetDriverByName('Envi').Create(result_path_mahal.as_posix(), Nx, Ny, 1, gdal.GDT_Float32)
+        output_mahal.GetRasterBand(1).WriteArray(uncertainty_mahal)
+        output_mahal.FlushCache()
 
-    # logger
+        output_apost = gdal.GetDriverByName('Envi').Create(result_path_apost.as_posix(), Nx, Ny, 1, gdal.GDT_Float32)
+        output_apost.GetRasterBand(1).WriteArray(uncertainty_apost)
+        output_apost.FlushCache()
+
     logger.info(f'Result writtten to {result_path}')
 
 # -------------------------------------------------------------------------- #
