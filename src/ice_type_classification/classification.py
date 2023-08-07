@@ -20,6 +20,7 @@ from osgeo import gdal
 import ice_type_classification.gaussian_IA_classifier as gia
 
 import ice_type_classification.uncertainty_utils as uncertainty_utils
+import ice_type_classification.classification_utils as classification_utils
 
 # -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
@@ -310,107 +311,59 @@ def classify_S1_image_from_feature_folder(
     logger.info('Memory mapping required data')
 
 
+# --------------------- #
+
     # memory map IA if required, set empty otherwise
 
     if clf_type=='gaussian_IA':
 
-        logger.debug(f'Checking byte order for IA')
+        logger.debug('Memory mapping IA')
 
-        # get IA byte order
-        hdr_file = feat_folder/f'IA.hdr'
-        with open(hdr_file.as_posix()) as ff:
-            header_contents = ff.read().splitlines()
-        for header_line in header_contents:
-            if 'byte order' in header_line:
-                logger.debug(header_line)
-                img_byte_order = int(header_line[-1])
+        # check of byteswap is needed
+        byteswap_needed = classification_utils.check_image_byte_order(feat_folder/f'IA.img')
 
-        # check if img and system byte orders match
-        if img_byte_order == system_byte_order:
-            logger.debug('Image byte order matches system byte order for IA')
-            logger.debug('Memory mapping IA')
-            IA_mask = np.memmap(
-                (feat_folder / 'IA.img').as_posix(), 
-                dtype=np.float32, mode='r', shape=(N)
-            )
-        elif img_byte_order != system_byte_order:
-            logger.debug('Image byte order does not match system byte order for IA')
-            logger.debug('Memory mapping IA')
-            IA_mask = np.memmap(
-                (feat_folder / 'IA.img').as_posix(), 
-                dtype=np.float32, mode='r', shape=(N)
-            ).byteswap()
+        if byteswap_needed:
+            IA_mask = np.memmap((feat_folder / 'IA.img').as_posix(), dtype=np.float32, mode='r', shape=(N)).byteswap()
+        elif not byteswap_needed:
+            IA_mask = np.memmap((feat_folder / 'IA.img').as_posix(), dtype=np.float32, mode='r', shape=(N))
 
     else:
         IA_mask = np.zeros(N).astype(int)
 
+# --------------------- #
 
-
-    # memory map valid mask if required, set valid mask to 1 otherwise
+    # memory map valid mask if required, set empty otherwise
 
     if valid_mask:
 
-        logger.debug(f'Checking byte order for valid mask')
+        logger.debug('Memory mapping valid mask')
 
-        # get valid mask byte order
-        hdr_file = feat_folder/f'valid.hdr'
-        with open(hdr_file.as_posix()) as ff:
-            header_contents = ff.read().splitlines()
-        for header_line in header_contents:
-            if 'byte order' in header_line:
-                logger.debug(header_line)
-                img_byte_order = int(header_line[-1])
+        # check of byteswap is needed
+        byteswap_needed = classification_utils.check_image_byte_order(feat_folder/f'valid.img')
 
-
-        # check if img and system byte orders match
-        if img_byte_order == system_byte_order:
-            logger.debug('Image byte order matches system byte order for valid mask')
-            logger.debug('Memory mapping valid mask')
-            valid_mask = np.memmap(
-                (feat_folder / 'valid.img').as_posix(), 
-                dtype=valid_mask_data_type, mode='r', shape=(N)
-            )
-        elif img_byte_order != system_byte_order:
-            logger.debug('Image byte order does not match system byte order for valid mask')
-            logger.debug('Memory mapping valid mask')
-            valid_mask = np.memmap(
-                (feat_folder / 'valid.img').as_posix(), 
-                dtype=valid_mask_data_type, mode='r', shape=(N)
-            ).byteswap()
+        if byteswap_needed:
+            valid_mask = np.memmap((feat_folder / 'valid.img').as_posix(), dtype=valid_mask_data_type, mode='r', shape=(N)).byteswap()
+        elif not byteswap_needed:
+            valid_mask = np.memmap((feat_folder / 'valid.img').as_posix(), dtype=valid_mask_data_type, mode='r', shape=(N))
 
     else:
         logger.debug('Setting valid_mask to 1')
         valid_mask = np.ones(N).astype(int)
 
+# --------------------- #
 
     for f in required_features:
 
-        logger.debug(f'Checking byte order for current feature: {f}')
+        logger.debug(f'Memory mapping feature: {f}')
 
-        # get current feature byte order
-        hdr_file = feat_folder/f'{f}.hdr'
-        with open(hdr_file.as_posix()) as ff:
-            header_contents = ff.read().splitlines()
-        for header_line in header_contents:
-            if 'byte order' in header_line:
-                logger.debug(header_line)
-                img_byte_order = int(header_line[-1])
+        # check of byteswap is needed
+        byteswap_needed = classification_utils.check_image_byte_order(feat_folder/f'{f}.img')
 
-
-        # check if img and system byte orders match
-        if img_byte_order == system_byte_order:
-            logger.debug('Image byte order matches system byte order for current feature')
-            data_dict[f] = np.memmap(
-                f'{feat_folder.as_posix()}/{f}.img', 
-                dtype=np.float32, mode='r', shape=(N)
-            )
-        elif img_byte_order != system_byte_order:
-            logger.debug('Image byte order does not match system byte order for current feature')
-            data_dict[f] = np.memmap(
-                f'{feat_folder.as_posix()}/{f}.img', 
-                dtype=np.float32, mode='r', shape=(N)
-            ).byteswap()
-
+        if byteswap_needed:
+            data_dict[f] = np.memmap(f'{feat_folder.as_posix()}/{f}.img', dtype=np.float32, mode='r', shape=(N)).byteswap()
+        elif not byteswap_needed:
+            data_dict[f] = np.memmap(f'{feat_folder.as_posix()}/{f}.img', dtype=np.float32, mode='r', shape=(N))
+ 
 # -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
