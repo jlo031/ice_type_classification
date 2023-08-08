@@ -1,12 +1,18 @@
 import S1_processing.S1_feature_extraction as S1_feat
 import ice_type_classification.classification as cl
+import geocoding.S1_geocoding as geo_S1
 
 import matplotlib.pyplot as plt
 from osgeo import gdal
 
 import pathlib
 
+# ------------------------------------------------------------------------------ #
+
 f_base = 'S1A_EW_GRDM_1SDH_20220502T074527_20220502T074631_043029_05233F_7BC7'
+f_base = 'S1A_EW_GRDM_1SDH_20220502T074631_20220502T074731_043029_05233F_CC06'
+f_base = 'S1A_EW_GRDM_1SDH_20220503T082621_20220503T082725_043044_0523D1_AF89'
+#f_base = 'S1A_EW_GRDM_1SDH_20220503T082725_20220503T082825_043044_0523D1_DCC4'
 
 ML = '9x9'
 
@@ -16,13 +22,15 @@ L1_folder       = S1_folder / 'L1'
 safe_folder     = L1_folder / f'{f_base}.SAFE'
 feat_folder     = S1_folder / f'ML_{ML}' / 'features' / f'{f_base}'
 result_folder   = S1_folder / f'ML_{ML}' / 'results' / f'{f_base}'
+geo_folder      = S1_folder / 'geocoded'
 
 clf_pickle_file = f'/home/jo/work/ice_type_classification/src/ice_type_classification/clf_models/belgica_bank_classifier_4_classes_20220421.pickle'
 
 loglevel  = 'DEBUG'
-overwrite = True
+overwrite = False
 
-
+target_epsg = 3996
+pixel_spacing = 80
 
 # ------------------------------------------------------------------------------ #
 
@@ -60,6 +68,42 @@ cl.classify_S1_image_from_feature_folder(
     loglevel=loglevel,
     overwrite=overwrite
 )
+
+# ------------------------------------------------------------------------------ #
+# ------------------------------------------------------------------------------ #
+
+# geocode
+
+img_path_list = [
+    feat_folder / f'Sigma0_HH_db.img',
+    feat_folder / f'Sigma0_HV_db.img',
+    result_folder / f'{f_base}_labels.img',
+    result_folder / f'{f_base}_mahal_uncertainty.img',
+    result_folder / f'{f_base}_apost_uncertainty.img'
+]
+
+for img_path in img_path_list:
+
+    name = img_path.stem
+    if name in ['Sigma0_HH_db', 'Sigma0_HV_db']:
+        name = f'{f_base}_{name}'
+
+    output_tiff_path = geo_folder / f'{name}.tiff'
+
+    geo_S1.geocode_S1_image_from_safe_gcps(
+        img_path,
+        safe_folder,
+        output_tiff_path,
+        target_epsg,
+        pixel_spacing,
+        srcnodata=0,
+        dstnodata=0,
+        order=3,
+        resampling='near',
+        keep_gcp_file=False,
+        overwrite=overwrite,
+        loglevel=loglevel,
+    )
 
 # ------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------ #

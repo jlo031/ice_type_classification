@@ -18,14 +18,26 @@ from scipy.stats import chi2
 # -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
 
-def get_mahalanobis_distance(X_test, mu_vec, cov_mat, IA_test = False, IA_0 = np.nan, IA_slope = np.nan):
+def get_mahalanobis_distance(
+    X_test,
+    mu_vec,
+    cov_mat,
+    IA_test = False,
+    IA_0 = np.nan,
+    IA_slope = np.nan,
+    loglevel = 'INFO',
+):
+
     """Find Mahalanobis distance (not squared) for a set of feature vectors given fixed class parameters (mean vector and covariance matrix)
        
     Parameters
     ----------
-    X_test : Numpy array of N samples of dimension d [N, d]
-    mu_vec : Numpy array of mean values of each of C classes over d dimensions [C, d]
-    cov_mat : Numpy array of covariance matrices of C classes over d dimensions [C, d, d]
+    X_test : numpy array of N samples of dimension d [N, d]
+    mu_vec : numpy array of mean values of each of C classes over d dimensions [C, d]
+    cov_mat : numpy array of covariance matrices of C classes over d dimensions [C, d, d]
+    IA_test : numpy arry of N samples with IA values (for models with linearly variable mean vector)
+    IA_0: IA test value (for models with linearly variable mean vector)
+    IA_slope : numoy array of C classes and d dimensions with slope values [C, d](for models with linearly variable mean vector)
     loglevel : loglevel setting (default='INFO')
 
     Returns
@@ -43,6 +55,7 @@ def get_mahalanobis_distance(X_test, mu_vec, cov_mat, IA_test = False, IA_0 = np
 
     # loop over all classes and calculate Mahalanobis distances
     for cl in range(n_classes):
+
         # extract mean vector and covariance matrix of current class
         mu_vec_curr  = mu_vec[cl]
         cov_mat_curr = cov_mat[cl]
@@ -58,7 +71,7 @@ def get_mahalanobis_distance(X_test, mu_vec, cov_mat, IA_test = False, IA_0 = np
             X_test_p = X_test
             
         # center feature vectors wrt given mean vector        
-        X_centered = X_test - mu_vec_curr
+        X_centered = X_test - mu_vec_curr # TODO: should this be X_test_p ?
 
         # calculated "left" part of the Mahalanobis distance
         left = np.dot(X_centered, np.linalg.inv(cov_mat_curr))
@@ -73,14 +86,18 @@ def get_mahalanobis_distance(X_test, mu_vec, cov_mat, IA_test = False, IA_0 = np
 # -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
 
-def uncertainty(probs_img, Mahal_img, n_feat,  
-                Aposterior_uncertainty_meausure = "Entropy",
-                DO_aposterior_uncertainty = True,
-                DO_Mahalanobis_uncertainty = True, 
-                Discrete_uncertainty = False):
+def uncertainty(
+    probs_img,
+    Mahal_img,
+    n_feat,  
+    Aposterior_uncertainty_meausure = "Entropy",
+    DO_aposterior_uncertainty = True,
+    DO_Mahalanobis_uncertainty = True, 
+    Discrete_uncertainty = False
+):
+
     """
-    Estimate per-pixel uncertainty arrays based on aposterior probabilities  
-    and Mahalanobis distance.
+    Estimate per-pixel uncertainty arrays based on aposterior probabilities and Mahalanobis distance.
     * Uncertainty based on aposterior probabilities is high when a sample has 
       a feature vector in a location with high class overlap.
     * Uncertainty based on Mahalnobis distance is high when a sample is really
@@ -126,6 +143,7 @@ def uncertainty(probs_img, Mahal_img, n_feat,
     
     Kristian Hindberg @ CIRFA/UiT, January 2023
     """
+
     N, n_classes = probs_img.shape
     
     """
@@ -316,7 +334,7 @@ def uncertainty(probs_img, Mahal_img, n_feat,
             # Take -log10
             P_val_Mahal[np.isnan(MahalSquared_of_maxProbClass) == False] = -np.log10(P_val_Mahal[np.isnan(MahalSquared_of_maxProbClass) == False])
             # Threshold to above 6 and below 12
-            P_val_Mahal[P_val_Mahal< 6] = np.nan
+            P_val_Mahal[P_val_Mahal< 6] = np.nan # TODO: make thresholds flexible
             P_val_Mahal[P_val_Mahal>12] = 12
             
             # Assign to matrix

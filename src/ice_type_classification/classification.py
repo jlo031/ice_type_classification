@@ -57,8 +57,6 @@ def classify_S1_image_from_feature_folder(
     logger.info('Classifying input image')
 
 # -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
 
     # convert folder strings to paths
     feat_folder           = pathlib.Path(feat_folder).expanduser().absolute()
@@ -112,22 +110,6 @@ def classify_S1_image_from_feature_folder(
         result_path_apost_hdr.unlink(missing_ok=True)
 
 # -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
-
-    # get system byte order for memory mapping
-
-    system_byte_order = sys.byteorder
-
-    # convert system_byte_order to integer
-    if system_byte_order == 'little':
-        system_byte_order = 0
-    elif system_byte_order == 'big':
-        system_byte_order = 1
-
-# -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
 
     # GET BASIC CLASSIFIER INFO
 
@@ -151,8 +133,47 @@ def classify_S1_image_from_feature_folder(
     logger.info(f'clf_type: {clf_type}')
     logger.info(f'required_features: {required_features}')
 
-# -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
+# ---------------------------------- #
+
+    # BUILD CLASSIFIER OBJECT ACCORDING TO CLASSIFIER DICT
+
+    # check classifier type
+    # for gaussian or gaussian_IA:
+    #     - build the actual clf object from the saved parameters
+    # for other types:
+    #      - set the clf object directly from classifier_dict
+    #      - import the necessary modules from sklearn
+
+    if clf_type == 'gaussian_IA':
+        logger.debug(f'clf_type: {clf_type}')
+        logger.debug('classifier_dict should only contain clf parameters')
+        logger.debug('building classifier object from these parameters')
+        clf = gia.make_gaussian_IA_clf_object_from_params_dict(classifier_dict['gaussian_IA_params'])
+
+        # extract parameters needed for uncertainties
+        mu_vec_all_classes  = classifier_dict['gaussian_IA_params']['mu']
+        cov_mat_all_classes = classifier_dict['gaussian_IA_params']['Sigma']
+        n_classes           = int(classifier_dict['gaussian_IA_params']['n_class'])
+        n_features          = int(classifier_dict['gaussian_IA_params']['n_feat'])
+        IA_0                = classifier_dict['gaussian_IA_params']['IA_0']
+        IA_slope            = classifier_dict['gaussian_IA_params']['b']
+
+    elif clf_type =='gaussian':
+        logger.debug(f'clf_valid_mask_data_typetype: {clf_type}')
+        logger.debug('classifier_dict should only contain clf parameters')
+        logger.debug('building classifier object from these parameters')
+        clf = gia.make_gaussian_clf_object_from_params_dict(classifier_dict['gaussian_params'])
+
+        # extract parameters needed for uncertainties
+        mu_vec_all_classes   = classifier_dict['gaussian_params']['mu']
+        cov_vmat_all_classes = classifier_dict['gaussian_params']['Sigma']
+        n_classes            = int(classifier_dict['gaussian_params']['n_class'])
+        n_features          = int(classifier_dict['gaussian_params']['n_feat'])
+
+    else:
+        logger.error('This clf type is not implemented yet')
+        raise NotImplementedError('This clf type is not implemented yet')
+
 # -------------------------------------------------------------------------- #
 
     # CHECK EXISTING AND REQUIRED FEATURES
@@ -166,30 +187,24 @@ def classify_S1_image_from_feature_folder(
             logger.error(f'Cannot find required feature: {f}')
             raise FileNotFoundError(f'Cannot find required feature: {f}')
 
-
     # get Nx and Ny from first required feature
-    ds = gdal.Open((feat_folder / f'{required_features[0]}.img').as_posix(), gdal.GA_ReadOnly)
-    Nx = ds.RasterXSize
-    Ny = ds.RasterYSize
-    ds = []
-    logger.info(f'Read image dimensions: {Nx,Ny}')
-
+    Nx, Ny = classification_utils.get_image_dimensions((feat_folder / f'{required_features[0]}.img').as_posix())
+    shape  = (Ny, Nx)
+    N      = Nx*Ny
+    logger.info(f'Image dimensions: Nx={Nx}, Ny={Ny}')
+    logger.info(f'Image shape: {shape}')
+    logger.info(f'Total number of pixels: {N}')
 
     # check that all required features have same dimensions
     for f in required_features:
-        ds =  gdal.Open((feat_folder / f'{f}.img').as_posix(), gdal.GA_ReadOnly)
-        Nx_current = ds.RasterXSize
-        Ny_current = ds.RasterYSize
-        ds = []
+        Nx_current, Ny_current = classification_utils.get_image_dimensions(  (feat_folder / f'{f}.img').as_posix() )
         if not Nx == Nx_current or not Ny == Ny_current:
             logger.error(f'Image dimensions of required features do not match')
             raise ValueError(f'Image dimensions of required features do not match')
 
 # -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
 
-    # CHECK VALID AND IA MASK IF REQUIRED
+    # CHECK VALID MASK
 
     if valid_mask:
         logger.info('Using valid mask')
@@ -201,12 +216,9 @@ def classify_S1_image_from_feature_folder(
             raise FileNotFoundError('Cannot find valid mask: valid.img')
 
         else:
-            # get valid_mask dimensions
-            ds =  gdal.Open((feat_folder / 'valid.img').as_posix(), gdal.GA_ReadOnly)
-            Nx_valid = ds.RasterXSize
-            Ny_valid = ds.RasterYSize
-            ds = []
             # check that valid_mask dimensions match feature dimensions
+            ds =  gdal.Open((feat_folder / 'valid.img').as_posix(), gdal.GA_ReadOnly)
+            Nx_valid, Ny_valid = classification_utils.get_image_dimensions((feat_folder / 'valid.img').as_posix())
             if not Nx == Nx_valid or not Ny == Ny_valid:
                 logger.error(f'valid_mask dimensions do not match featured imensions')
                 raise ValueError(f'valid_mask dimensions do not match featured imensions')
@@ -226,7 +238,9 @@ def classify_S1_image_from_feature_folder(
     else:
         logger.info('Not using valid mask, set `-valid_mask` if wanted')
 
+# ---------------------------------- #
 
+    # CHECK IA MASK
 
     if clf_type == 'gaussian_IA':
         logger.info('Classifier is using IA information')
@@ -237,12 +251,8 @@ def classify_S1_image_from_feature_folder(
             raise FileNotFoundError(f'Cannot find IA image: IA.img')
 
         else:
-            # get IA dimensions
-            ds =  gdal.Open((feat_folder / 'IA.img').as_posix(), gdal.GA_ReadOnly)
-            Nx_IA = ds.RasterXSize
-            Ny_IA = ds.RasterYSize
-            ds = []
             # check that IA dimensions match feature dimensions
+            Nx_IA, Ny_IA = classification_utils.get_image_dimensions((feat_folder / 'IA.img').as_posix())
             if not Nx == Nx_IA or not Ny == Ny_IA:
                 logger.error(f'IA dimensions do not match featured imensions')
                 raise ValueError(f'IA dimensions do not match featured imensions')
@@ -254,62 +264,12 @@ def classify_S1_image_from_feature_folder(
 # -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
 
-    # BUILD CLASSIFIER OBJECT ACCORDING TO CLASSIFIER DICT
-
-    # check classifier type
-    # for gaussian or gaussian_IA:
-    #     - build the actual clf object from the saved parameters
-    # for other types:
-    #      - set the clf object directly from classifier_dict
-    #      - import the necessary modules from sklearn
-
-    if clf_type == 'gaussian_IA':
-        logger.debug(f'clf_type: {clf_type}')
-        logger.debug('classifier_dict only contains clf parameters')
-        logger.debug('Setting up classifier object from these parameters')
-        clf = gia.make_gaussian_IA_clf_object_from_params_dict(classifier_dict['gaussian_IA_params'])
-
-        # for uncertainties
-        mu_vec_all_classes  = classifier_dict['gaussian_IA_params']['mu']
-        cov_mat_all_classes = classifier_dict['gaussian_IA_params']['Sigma']
-        n_classes           = int(classifier_dict['gaussian_IA_params']['n_class'])
-        n_features          = int(classifier_dict['gaussian_IA_params']['n_feat'])
-        IA_0                = classifier_dict['gaussian_IA_params']['IA_0']
-        IA_slope            = classifier_dict['gaussian_IA_params']['b']
-
-
-    elif clf_type =='gaussian':
-        logger.debug(f'clf_valid_mask_data_typetype: {clf_type}')
-        logger.debug('classifier_dict only contains clf parameters')
-        logger.debug('Setting up classifier object from these parameters')
-        clf = gia.make_gaussian_clf_object_from_params_dict(classifier_dict['gaussian_params'])
-
-        # for uncertainties
-        mu_vec_all_classes   = classifier_dict['gaussian_params']['mu']
-        cov_vmat_all_classes = classifier_dict['gaussian_params']['Sigma']
-        n_classes            = int(classifier_dict['gaussian_params']['n_class'])
-        n_features          = int(classifier_dict['gaussian_params']['n_feat'])
-
-    else:
-        ##clf = classifier_dict['clf_object']
-        logger.error('This clf type is not implemented yet')
-        raise NotImplementedError('This clf type is not implemented yet')
-
-# -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
-
-    # get image dimensions and total number of pixels N
-    shape = (Ny, Nx)
-    N     = Nx*Ny
-
     # initialize data dict and/or data list
     data_dict = dict()
     data_list = []
 
     # logger
     logger.info('Memory mapping required data')
-
 
 # --------------------- #
 

@@ -4,16 +4,18 @@
 Helper functions for classification module
 """
 
-import sys
-import pathlib
+from sys import byteorder
+from pathlib import Path
 
 from loguru import logger
+
+from osgeo.gdal import Open, GA_ReadOnly
 
 # -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
 
 def check_image_byte_order(img_path):
-    """ Check byte order of the input image and return whether or not it matches the system byte order
+    """Check byte order of the input image and return whether or not it matches the system byte order
        
     Parameters
     ----------
@@ -24,9 +26,8 @@ def check_image_byte_order(img_path):
     byteswap_needed : Boolean defining whether byteswap is needed for input image on current system
     """ 
 
-
     # make sure that input image path is pathlib object
-    img_path = pathlib.Path(img_path)
+    img_path = Path(img_path)
 
     # check that img_path exists
     if not img_path.is_file():
@@ -59,7 +60,7 @@ def check_image_byte_order(img_path):
 # --------------------- #
 
     # get system byte order
-    system_byte_order = sys.byteorder
+    system_byte_order = byteorder
     logger.debug(f'system_byte_order: {system_byte_order}')
 
     # convert system_byte_order to integer value
@@ -89,6 +90,47 @@ def check_image_byte_order(img_path):
 
     return byteswap_needed
 
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
+# -------------------------------------------------------------------------- #
+
+def get_image_dimensions(img_path):
+    """Get dimensions of input image
+       
+    Parameters
+    ----------
+    img_path : path to input image
+
+    Returns
+    -------
+    Nx : image raster X size
+    Ny : image raster Y size
+    """ 
+
+
+    # make sure that input image path is pathlib object
+    img_path = Path(img_path)
+
+    # check that img_path exists
+    if not img_path.is_file():
+        logger.error(f'Cannot find img_path: {img_path}')
+        raise FileNotFoundError(f'Cannot find img_path: {img_path}')
+
+# --------------------- #
+
+    # get Nx and Ny from first required feature
+    ds = Open(img_path.as_posix(), GA_ReadOnly)
+    Nx = ds.RasterXSize
+    Ny = ds.RasterYSize
+    ds = []
+
+    logger.debug(f'Read image dimensions: {Nx,Ny}')
+
+# --------------------- #
+
+    return Nx, Ny
 
 # -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
