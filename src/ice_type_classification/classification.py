@@ -30,6 +30,7 @@ def classify_S1_image_from_feature_folder(
     result_folder,
     classifier_model_path,
     uncertainties = True,
+    uncertainy_dict = [],
     valid_mask = False,
     block_size = 1e6,
     overwrite = False,
@@ -44,6 +45,7 @@ def classify_S1_image_from_feature_folder(
     result_folder : path to result folder where labels file is placed
     classifier_model_path : path to pickle file with classifier model dict
     uncertainties : estimate apost and mahal uncertainties (default True)
+    uncertainy_dict : dictionary with parameters for uncertainty estimation
     valid_mask : use valid mask
     block_size : number of pixels for block-wise processing (default=1e6)
     overwrite : overwrite existing files (default=False)
@@ -150,29 +152,69 @@ def classify_S1_image_from_feature_folder(
         logger.debug('building classifier object from these parameters')
         clf = gia.make_gaussian_IA_clf_object_from_params_dict(classifier_dict['gaussian_IA_params'])
 
-        # extract parameters needed for uncertainties
-        mu_vec_all_classes  = classifier_dict['gaussian_IA_params']['mu']
-        cov_mat_all_classes = classifier_dict['gaussian_IA_params']['Sigma']
-        n_classes           = int(classifier_dict['gaussian_IA_params']['n_class'])
-        n_features          = int(classifier_dict['gaussian_IA_params']['n_feat'])
-        IA_0                = classifier_dict['gaussian_IA_params']['IA_0']
-        IA_slope            = classifier_dict['gaussian_IA_params']['b']
-
     elif clf_type =='gaussian':
         logger.debug(f'clf_valid_mask_data_typetype: {clf_type}')
         logger.debug('classifier_dict should only contain clf parameters')
         logger.debug('building classifier object from these parameters')
         clf = gia.make_gaussian_clf_object_from_params_dict(classifier_dict['gaussian_params'])
 
-        # extract parameters needed for uncertainties
-        mu_vec_all_classes   = classifier_dict['gaussian_params']['mu']
-        cov_vmat_all_classes = classifier_dict['gaussian_params']['Sigma']
-        n_classes            = int(classifier_dict['gaussian_params']['n_class'])
-        n_features          = int(classifier_dict['gaussian_params']['n_feat'])
-
     else:
         logger.error('This clf type is not implemented yet')
         raise NotImplementedError('This clf type is not implemented yet')
+
+# -------------------------------------------------------------------------- #
+
+    # PREPARE UNCERTAINTY ESTIMATION
+
+    if uncertainties:
+        logger.debug('uncertainties is set to "True"')
+
+        # extract clf parameters needed for uncertainties
+        if clf_type == 'gaussian_IA':
+            mu_vec_all_classes  = classifier_dict['gaussian_IA_params']['mu']
+            cov_mat_all_classes = classifier_dict['gaussian_IA_params']['Sigma']
+            n_classes           = int(classifier_dict['gaussian_IA_params']['n_class'])
+            n_features          = int(classifier_dict['gaussian_IA_params']['n_feat'])
+            IA_0                = classifier_dict['gaussian_IA_params']['IA_0']
+            IA_slope            = classifier_dict['gaussian_IA_params']['b']
+        elif clf_type =='gaussian':
+            mu_vec_all_classes   = classifier_dict['gaussian_params']['mu']
+            cov_vmat_all_classes = classifier_dict['gaussian_params']['Sigma']
+            n_classes            = int(classifier_dict['gaussian_params']['n_class'])
+            n_features          = int(classifier_dict['gaussian_params']['n_feat'])
+        else:
+            logger.error('This clf type is not implemented yet')
+            raise NotImplementedError('This clf type is not implemented yet')
+
+
+        # set default values for uncertainty estimation
+        uncertainty_params = dict()
+        uncertainty_params['discrete_uncertainty'] = True
+        uncertainty_params['apost_uncertainty_measure'] = 'Entropy'
+        uncertainty_params['DO_apost_uncertainty'] = True
+        uncertainty_params['DO_mahal_uncertainty'] = True
+
+        # user uncertainty_dict if given
+        if uncertainty_dict == []:
+            logger.info('Using default parameters for uncertainty estimation')
+
+        elif type(uncertainty_dict) == dict:
+            logger.info('Setting uncertainty parameters from uncertainty_dict')
+
+            uncertainty_keys = uncertainty_dict.keys()
+            logger.debug(f'uncertainty_dict.keys(): {uncertainty_keys}')
+
+            # overwrite uncertainty_params with correct values from uncertainty_dict
+            for key in uncertainty_keys:
+                if key in ['discrete_uncertainty', 'apost_uncertainty_measure', 'DO_apost_uncertainty', 'DO_mahal_uncertainty']:
+                    logger.debug(f'overwriting default value for "{key}" with: {uncertainty_dict[key]}')
+                    uncertainty_params[key] = uncertainty_dict[key]
+                else:
+                    logger.warning(f'uncertainty_dict key "{key}" is unknown and will not be used')
+
+        else:
+            logger.warning(f'Expected "uncertainty_dict" of type "dict", but found type "{type(uncertainty_dict)}"')
+            logger.warning('Using default parameters for uncertainty estimation')
 
 # -------------------------------------------------------------------------- #
 
@@ -414,7 +456,15 @@ def classify_S1_image_from_feature_folder(
 
     if uncertainties:
         logger.info('Estimating apost and mahal uncertainties')
-        uncertainty_apost, uncertainty_mahal = uncertainty_utils.uncertainty(probs_img, mahal_img, n_features)
+        uncertainty_apost, uncertainty_mahal = uncertainty_utils.uncertainty(
+            probs_img,
+            mahal_img,
+            n_features,
+            Aposterior_uncertainty_meausure = uncertainty_params['apost_uncertainty_measure']
+            DO_aposterior_uncertainty = uncertainty_params['DO_apost_uncertainty']
+            DO_Mahalanobis_uncertainty = uncertainty_params['DO_mahal_uncertainty']
+            Discrete_uncertainty =uncertainty_params['discrete_uncertainty']
+        )
 
 # -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #

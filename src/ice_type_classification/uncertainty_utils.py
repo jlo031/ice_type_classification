@@ -71,7 +71,7 @@ def get_mahalanobis_distance(
             X_test_p = X_test
             
         # center feature vectors wrt given mean vector        
-        X_centered = X_test - mu_vec_curr # TODO: should this be X_test_p ?
+        X_centered = X_test_p - mu_vec_curr # TODO: should this be X_test_p ?
 
         # calculated "left" part of the Mahalanobis distance
         left = np.dot(X_centered, np.linalg.inv(cov_mat_curr))
