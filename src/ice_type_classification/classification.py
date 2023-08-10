@@ -30,7 +30,7 @@ def classify_S1_image_from_feature_folder(
     result_folder,
     classifier_model_path,
     uncertainties = True,
-    uncertainy_dict = [],
+    uncertainty_dict = [],
     valid_mask = False,
     block_size = 1e6,
     overwrite = False,
@@ -45,7 +45,7 @@ def classify_S1_image_from_feature_folder(
     result_folder : path to result folder where labels file is placed
     classifier_model_path : path to pickle file with classifier model dict
     uncertainties : estimate apost and mahal uncertainties (default True)
-    uncertainy_dict : dictionary with parameters for uncertainty estimation
+    uncertainty_dict : dictionary with parameters for uncertainty estimation
     valid_mask : use valid mask
     block_size : number of pixels for block-wise processing (default=1e6)
     overwrite : overwrite existing files (default=False)
@@ -181,7 +181,7 @@ def classify_S1_image_from_feature_folder(
             mu_vec_all_classes   = classifier_dict['gaussian_params']['mu']
             cov_vmat_all_classes = classifier_dict['gaussian_params']['Sigma']
             n_classes            = int(classifier_dict['gaussian_params']['n_class'])
-            n_features          = int(classifier_dict['gaussian_params']['n_feat'])
+            n_features           = int(classifier_dict['gaussian_params']['n_feat'])
         else:
             logger.error('This clf type is not implemented yet')
             raise NotImplementedError('This clf type is not implemented yet')
@@ -189,10 +189,17 @@ def classify_S1_image_from_feature_folder(
 
         # set default values for uncertainty estimation
         uncertainty_params = dict()
-        uncertainty_params['discrete_uncertainty'] = True
         uncertainty_params['apost_uncertainty_measure'] = 'Entropy'
         uncertainty_params['DO_apost_uncertainty'] = True
         uncertainty_params['DO_mahal_uncertainty'] = True
+        uncertainty_params['discrete_uncertainty'] = True
+        uncertainty_params['mahal_thresh_min'] = 6
+        uncertainty_params['mahal_thresh_max'] = 12
+        uncertainty_params['mahal_discrete_thresholds'] = np.array([6, 8, 10, 12])
+        uncertainty_params['apost_discrete_thresholds'] = 'default'
+
+        valid_uncertainty_keys = uncertainty_params.keys()
+
 
         # user uncertainty_dict if given
         if uncertainty_dict == []:
@@ -206,7 +213,7 @@ def classify_S1_image_from_feature_folder(
 
             # overwrite uncertainty_params with correct values from uncertainty_dict
             for key in uncertainty_keys:
-                if key in ['discrete_uncertainty', 'apost_uncertainty_measure', 'DO_apost_uncertainty', 'DO_mahal_uncertainty']:
+                if key in valid_uncertainty_keys:
                     logger.debug(f'overwriting default value for "{key}" with: {uncertainty_dict[key]}')
                     uncertainty_params[key] = uncertainty_dict[key]
                 else:
@@ -460,10 +467,14 @@ def classify_S1_image_from_feature_folder(
             probs_img,
             mahal_img,
             n_features,
-            Aposterior_uncertainty_meausure = uncertainty_params['apost_uncertainty_measure']
-            DO_aposterior_uncertainty = uncertainty_params['DO_apost_uncertainty']
-            DO_Mahalanobis_uncertainty = uncertainty_params['DO_mahal_uncertainty']
-            Discrete_uncertainty =uncertainty_params['discrete_uncertainty']
+            apost_uncertainty_meausure = uncertainty_params['apost_uncertainty_measure'],
+            DO_apost_uncertainty = uncertainty_params['DO_apost_uncertainty'],
+            DO_mahalanobis_uncertainty = uncertainty_params['DO_mahal_uncertainty'],
+            discrete_uncertainty = uncertainty_params['discrete_uncertainty'],
+            mahal_thresh_min = uncertainty_params['mahal_thresh_min'],
+            mahal_thresh_max = uncertainty_params['mahal_thresh_max'],
+            mahal_discrete_thresholds = uncertainty_params['mahal_discrete_thresholds'],
+            apost_discrete_thresholds = uncertainty_params['apost_discrete_thresholds']
         )
 
 # -------------------------------------------------------------------------- #

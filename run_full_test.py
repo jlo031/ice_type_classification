@@ -5,6 +5,8 @@ import geocoding.S1_geocoding as geo_S1
 import matplotlib.pyplot as plt
 from osgeo import gdal
 
+import numpy as np
+
 import pathlib
 
 # ------------------------------------------------------------------------------ #
@@ -21,7 +23,7 @@ S1_folder = pathlib.Path('/media/Data/Sentinel-1')
 L1_folder       = S1_folder / 'L1'
 safe_folder     = L1_folder / f'{f_base}.SAFE'
 feat_folder     = S1_folder / f'ML_{ML}' / 'features' / f'{f_base}'
-result_folder   = S1_folder / f'ML_{ML}' / 'results' / f'{f_base}'
+result_folder   = S1_folder / f'ML_{ML}' / 'results_test_uncertainty_params_2' / f'{f_base}'
 geo_folder      = S1_folder / 'geocoded'
 
 clf_pickle_file = f'/home/jo/work/ice_type_classification/src/ice_type_classification/clf_models/belgica_bank_classifier_4_classes_20220421.pickle'
@@ -60,11 +62,22 @@ S1_feat.get_S1_IA(
 
 # classify
 
+uncertainty_dict = dict()
+uncertainty_dict['apost_uncertainty_measure'] = 'Entropy'
+uncertainty_dict['DO_apost_uncertainty'] = True
+uncertainty_dict['DO_mahal_uncertainty'] = True
+uncertainty_dict['discrete_uncertainty'] = True
+uncertainty_dict['mahal_thresh_min'] = 2
+uncertainty_dict['mahal_thresh_max'] = 16
+uncertainty_dict['mahal_discrete_thresholds'] = np.array([6, 8, 10, 12])
+uncertainty_dict['apost_discrete_thresholds'] = 'default'
+
 cl.classify_S1_image_from_feature_folder(
     feat_folder,
     result_folder,
     clf_pickle_file,
     uncertainties=True,
+    uncertainty_dict=uncertainty_dict,
     loglevel=loglevel,
     overwrite=overwrite
 )
@@ -73,7 +86,7 @@ cl.classify_S1_image_from_feature_folder(
 # ------------------------------------------------------------------------------ #
 
 # geocode
-
+"""
 img_path_list = [
     feat_folder / f'Sigma0_HH_db.img',
     feat_folder / f'Sigma0_HV_db.img',
@@ -104,11 +117,11 @@ for img_path in img_path_list:
         overwrite=overwrite,
         loglevel=loglevel,
     )
-
+"""
 # ------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------ #
 
-make_figure = True
+make_figure = False
 
 if make_figure:
     HH = gdal.Open((feat_folder/f'Sigma0_HH_db.img').as_posix()).ReadAsArray()

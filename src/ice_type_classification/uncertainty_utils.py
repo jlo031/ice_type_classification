@@ -28,7 +28,7 @@ def get_mahalanobis_distance(
     loglevel = 'INFO',
 ):
 
-    """Find Mahalanobis distance (not squared) for a set of feature vectors given fixed class parameters (mean vector and covariance matrix)
+    """Find mahalanobis distance (not squared) for a set of feature vectors given fixed class parameters (mean vector and covariance matrix)
        
     Parameters
     ----------
@@ -42,7 +42,7 @@ def get_mahalanobis_distance(
 
     Returns
     -------
-    mahal_test : Numpy array of N samples and C classes, with Mahalanobis distance of all samples for all classes [N x C]
+    mahal_test : Numpy array of N samples and C classes, with mahalanobis distance of all samples for all classes [N x C]
     """ 
 
     # get number of classes
@@ -53,7 +53,7 @@ def get_mahalanobis_distance(
     # define empty output matrix
     mahal_test  = np.empty((X_test.shape[0],mu_vec.shape[0]))
 
-    # loop over all classes and calculate Mahalanobis distances
+    # loop over all classes and calculate mahalanobis distances
     for cl in range(n_classes):
 
         # extract mean vector and covariance matrix of current class
@@ -73,12 +73,12 @@ def get_mahalanobis_distance(
         # center feature vectors wrt given mean vector        
         X_centered = X_test_p - mu_vec_curr # TODO: should this be X_test_p ?
 
-        # calculated "left" part of the Mahalanobis distance
+        # calculated "left" part of the mahalanobis distance
         left = np.dot(X_centered, np.linalg.inv(cov_mat_curr))
 
         # do the "right" part so that it handles very large matrices, by 
         # avoiding to construct an [N,N] matrix and taking the trace of this.
-        # Take sqrt to get Mahalanobis distance
+        # Take sqrt to get mahalanobis distance
         mahal_test[:,cl] = np.sqrt(np.sum(np.multiply(left,X_centered), 1))
 
     return mahal_test
@@ -88,58 +88,60 @@ def get_mahalanobis_distance(
 
 def uncertainty(
     probs_img,
-    Mahal_img,
+    mahal_img,
     n_feat,  
-    Aposterior_uncertainty_meausure = "Entropy",
-    DO_aposterior_uncertainty = True,
-    DO_Mahalanobis_uncertainty = True, 
-    Discrete_uncertainty = False
+    apost_uncertainty_meausure = "Entropy",
+    DO_apost_uncertainty = True,
+    DO_mahalanobis_uncertainty = True, 
+    discrete_uncertainty = False,
+    mahal_thresh_min = 6,
+    mahal_thresh_max = 12,
+    mahal_discrete_thresholds = np.array([6, 8, 10, 12]),
+    apost_discrete_thresholds = 'default',
 ):
 
     """
-    Estimate per-pixel uncertainty arrays based on aposterior probabilities and Mahalanobis distance.
-    * Uncertainty based on aposterior probabilities is high when a sample has 
+    Estimate per-pixel uncertainty arrays based on apost probabilities and mahalanobis distance.
+    * Uncertainty based on apost probabilities is high when a sample has 
       a feature vector in a location with high class overlap.
-    * Uncertainty based on Mahalnobis distance is high when a sample is really
+    * Uncertainty based on mahalnobis distance is high when a sample is really
       far from the center of the ellipsoide that defines the multivariate
-      Gaussian of the most probable class. A really high Mahalanobis distance
+      Gaussian of the most probable class. A really high mahalanobis distance
       might be an indication of the sample belonging to a class not in the
       training set, or at least not a class that the classifier is trained on.
-      The p-values of the Mahalnobis distance of the most probable class is 
+      The p-values of the mahalnobis distance of the most probable class is 
       used to assign this "out-of-distribution uncertainty".
     
     Required input variables:
       - probs_img - [N,C] Array of probabilities of C classes of N samples
-      - Mahal_img - [N,C] Mahalanobis distance C classes of N samples
+      - mahal_img - [N,C] mahalanobis distance C classes of N samples
       - n_feat    - Number of features used for classification.  
-                    Used to find p-values of Mahalanobis distances.
+                    Used to find p-values of mahalanobis distances.
 
     Optional inputs:
-      Aposterior_uncertainty_meausure 
-      - Which method for uncertainty evaluation based on the aposterior 
+      apost_uncertainty_meausure 
+      - Which method for uncertainty evaluation based on the apost 
         probabilities of each class. Possible values are 
             'Entropy'   - Entropy across all clasese (DEFAULT)
-            'Apost_max' - Only used aposterior of most probable class
+            'Apost_max' - Only used apost of most probable class
             'Diff_1_2'  - Difference of the two most probable classes
         The methods produce identical results when only using two classes.
-      DO_aposterior_uncertainty [Default: True]
+      DO_apost_uncertainty [Default: True]
       - Bolean to make uncertainty matrix based on posterior values
-      DO_Mahalanobis_uncertainty [Default: True]
-      - Bolean to make uncertainty matrix based on Mahalanobis distance     
-      Discrete_uncertainty
+      DO_mahalanobis_uncertainty [Default: True]
+      - Bolean to make uncertainty matrix based on mahalanobis distance     
+      discrete_uncertainty
       - Bolean to discretize uncertainty to a fixed set of four levels 
         [Default: False]
 
-      DO_geocode  [Default: True]
-      - Bolean to output geocoded results
-      res_geocode [default: 40]
-      - Pixel spacing in meter (both direction) in geocoded results
-      epsg [Default]: 3996]
-      - Map projection to use
+    mahal_thresh_min : minimum threshold for mahalanobis distance (default=6)
+    mahal_thresh_max : maximum threshold for mahalanobis distance (default=12)
+    mahal_dicrete_thresholds : np.array with thresholds for discretization of mahal uncertainty (default: np.array([6, 8, 10, 12]))
+    apost_dicrete_thresholds : thresholds for discretization of apost uncertainty (default: depending on uncertainty_measure)
 
     Outputs
-    - Uncertainty image based on the chosen aposterior uncertainty measure
-    - Uncertainty image based on Mahalanobis distance
+    - Uncertainty image based on the chosen apost uncertainty measure
+    - Uncertainty image based on mahalanobis distance
     
     Kristian Hindberg @ CIRFA/UiT, January 2023
     """
@@ -147,9 +149,9 @@ def uncertainty(
     N, n_classes = probs_img.shape
     
     """
-        Uncertainty based on aposterior probabilities of different classes
+        Uncertainty based on apost probabilities of different classes
     """
-    if DO_aposterior_uncertainty:
+    if DO_apost_uncertainty:
 
         # Valid mask can be deduced from the pixels that are NaN in probs_img
         valid_mask = np.ones(N).astype(int)
@@ -163,11 +165,11 @@ def uncertainty(
         # of max probability can be found.
         valid_mask[prob_sum == 0] = 0
     
-        # Find max aposterior probability of most probable class, with values
+        # Find max apost probability of most probable class, with values
         #    nan      For pixels set to invalid in the valid_mask
         #      0      For pixels with so extreme measurement values so that 
         #             the probability is rounded to zero for all classes
-        #      <0,1]  Aposterior probability of most probable class 
+        #      <0,1]  apost probability of most probable class 
         apost_all_img = np.ones((N, n_classes))
         apost_all_img.fill(np.nan)
         # First, find sum of pdf values across all classes
@@ -175,7 +177,7 @@ def uncertainty(
         # Divied each class value by this summed value, so they sum to 1
         for classy in range(n_classes):
             apost_all_img[valid_mask==1, classy] = probs_img[valid_mask==1,classy] / prob_sum_each_pixel
-        # Find max aposterior of each pixel 
+        # Find max apost of each pixel 
         apost_max_img = apost_all_img.max(axis=1)
         # Set pixels with zero prob for all classes to zero apost max
         apost_max_img[prob_sum == 0] = 0
@@ -186,8 +188,8 @@ def uncertainty(
         All methods are scaled to [0,1] with low values indicating 
         low uncertainty in the classification.
         """
-        if Aposterior_uncertainty_meausure == "Entropy":            
-            # Define entropy-based uncertainty measure, which is based on aposterior 
+        if apost_uncertainty_meausure == "Entropy":            
+            # Define entropy-based uncertainty measure, which is based on apost 
             # probabilities of all classes.
             # Initially set all to zero to avoid problems in the summation. At the end,
             # set invalid pixels to NaN
@@ -197,7 +199,7 @@ def uncertainty(
             #             the probability to zero for all but one classes.
             #      1      For pixels with so extreme measurement values so that the classifier rounds the 
             #             the probability to zero for all classes
-            #      <0,1>  Aposterior probability of most probable class 
+            #      <0,1>  apost probability of most probable class 
             uncer_entropy = np.zeros(N)
             for classy in range(n_classes):
                 
@@ -216,7 +218,7 @@ def uncertainty(
             uncer_entropy = uncer_entropy / np.log2(n_classes)
             uncer_entropy[uncer_entropy>1] = 1 # From round-off, you might get some values just above one
               
-            # Set those with aposterior of most probable class equal to 1 to zero 
+            # Set those with apost of most probable class equal to 1 to zero 
             # entropy based uncertainty. From round-off and numerical issues,
             # even with apost_max_img==1 some pixels will get a very small, but
             # non-zero, positive value for entropy    
@@ -224,12 +226,15 @@ def uncertainty(
             uncer_entropy[apost_max_img==0] = 1
         
             # Assign threshold values for discretization of uncertainty
-            apost_uncertainty_thresholds = [0.469, 0.722, 0.881, 0.971]
-            
+            if apost_discrete_thresholds == 'default':
+                apost_uncertainty_thresholds = [0.469, 0.722, 0.881, 0.971]
+            else:
+                apost_uncertainty_thresholds = apost_dicrete_thresholds
+
             # Assign name used below for uncertainty variable
             uncertainty_apost = uncer_entropy
             
-        if Aposterior_uncertainty_meausure == "Apost_max":
+        if apost_uncertainty_meausure == "Apost_max":
             
             # Reasonable cut-off might depend on number of classes
             uncer_apost_max  = 1 - apost_max_img
@@ -241,33 +246,39 @@ def uncertainty(
             uncer_apost_max = uncer_apost_max/(1-1/n_classes)
             
             # Assign threshold values for discretization of uncertainty
-            apost_uncertainty_thresholds = [0.2, 0.4, 0.6, 0.8]
+            if apost_discrete_thresholds == 'default':
+                apost_uncertainty_thresholds = [0.2, 0.4, 0.6, 0.8]
+            else:
+                apost_uncertainty_thresholds = apost_dicrete_thresholds
             
             # Assign name used below for uncertainty variable
             uncertainty_apost = uncer_apost_max
 
-        if Aposterior_uncertainty_meausure == "Diff_1_2":     
+        if apost_uncertainty_meausure == "Diff_1_2":     
 
             # Reasonable cut-off might depend on number of classes   
             
-            # Determine aposterior probability of two most probable classes
+            # Determine apost probability of two most probable classes
             two_most_probable = np.sort(apost_all_img, axis=1)[:, -2:]
             # Take difference of these two
             Diff_1_2 = two_most_probable[:,1]  - two_most_probable[:,0]
             # Do 1 minus this difference to make uncertainty measure,
-            # where high values indicate low difference in aposterior 
+            # where high values indicate low difference in apost 
             # probability between the two most probable classes.
             uncer_diff_1_2 = 1 - Diff_1_2
 
             # Assign threshold values for discretization of uncertainty
-            apost_uncertainty_thresholds =[0.2, 0.4, 0.6, 0.8]
+            if apost_discrete_thresholds == 'default':
+                apost_uncertainty_thresholds = [0.2, 0.4, 0.6, 0.8]
+            else:
+                apost_uncertainty_thresholds = apost_dicrete_thresholds
             
             # Assign name used below for uncertainty variable
             uncertainty_apost = uncer_diff_1_2
 
         
         """ Discretize uncertainty estimates to fixed set of levels """
-        if Discrete_uncertainty==True:           
+        if discrete_uncertainty==True:           
             """
             The assigned uncertainty thresholds produce identical results for 
             two classes for all three possible uncertainty methods, and corresponds 
@@ -282,7 +293,9 @@ def uncertainty(
             set to NaN to avoid the uncertainty map having values for very
             certain pixels.
             """
+
             uncertainty_apost_levels_img = np.copy(uncertainty_apost)
+
             for apost_uncertainty_thresholds_curr in apost_uncertainty_thresholds:
                 uncertainty_apost_levels_img[ uncertainty_apost > apost_uncertainty_thresholds_curr] = apost_uncertainty_thresholds_curr
             # Set uncertainty pixels below lowest threshold to nan
@@ -295,56 +308,57 @@ def uncertainty(
 
 
     """
-        Uncertainty based on high Mahalnobis distance (out-of-distribution)
+        Uncertainty based on high mahalnobis distance (out-of-distribution)
     """
-    if DO_Mahalanobis_uncertainty:
+    if DO_mahalanobis_uncertainty:
         
         # Define uncertainty matrix based on -log10 of the P-value of the
-        # Mahalanobis distance of the most probable class.
+        # mahalanobis distance of the most probable class.
 
-        # Find minimum Mahalanobis distance of each pixel
-        Mahal_of_maxProbClass = Mahal_img.min(axis=1)
+        # Find minimum mahalanobis distance of each pixel
+        mahal_of_maxProbClass = mahal_img.min(axis=1)
         # Take square of this distance 
-        MahalSquared_of_maxProbClass = Mahal_of_maxProbClass * Mahal_of_maxProbClass
+        mahalSquared_of_maxProbClass = mahal_of_maxProbClass * mahal_of_maxProbClass
         # Square of MD is chi-square distributed with 'n_feat' DOFs
-        if Discrete_uncertainty==True:
+        if discrete_uncertainty==True:
             
             # Assign uncertainty thresholds (corresponding to -log10(P-values) )
-            Mahal_threshold = np.array([6, 8, 10, 12])
+            mahal_threshold = mahal_discrete_thresholds
     
             # Define output variables - set all to nan first
-            uncertainty_Mahal = np.zeros(N)
-            uncertainty_Mahal.fill(np.nan)
+            uncertainty_mahal = np.zeros(N)
+            uncertainty_mahal.fill(np.nan)
             # Find pixels that are rejected for different p-value thresholds, and
             # assign the value: -log10(Pvalue_threshold)
             # Pixels not rejected by any threshold are set to nan
-            for uncer_threshold in Mahal_threshold:
+            for uncer_threshold in mahal_threshold:
                 alpha_curr = 1/np.float_power(10, uncer_threshold)
-                Mahal_pvalue_threshold = chi2.ppf(1-alpha_curr, n_feat)
-                uncertainty_Mahal[MahalSquared_of_maxProbClass > Mahal_pvalue_threshold] = -np.log10(alpha_curr)
+                mahal_pvalue_threshold = chi2.ppf(1-alpha_curr, n_feat)
+                uncertainty_mahal[mahalSquared_of_maxProbClass > mahal_pvalue_threshold] = -np.log10(alpha_curr)
 
         else:
             
             # Find p-value of each pixel
-            P_val_Mahal = 1 - chi2.cdf(MahalSquared_of_maxProbClass, n_feat )
+            P_val_mahal = 1 - chi2.cdf(mahalSquared_of_maxProbClass, n_feat )
             
             # Set zero P-values to 1e-17
-            P_val_Mahal[P_val_Mahal==0] = 1e-17 # Might be thresholded below
+            P_val_mahal[P_val_mahal==0] = 1e-17 # Might be thresholded below
             
             # Take -log10
-            P_val_Mahal[np.isnan(MahalSquared_of_maxProbClass) == False] = -np.log10(P_val_Mahal[np.isnan(MahalSquared_of_maxProbClass) == False])
-            # Threshold to above 6 and below 12
-            P_val_Mahal[P_val_Mahal< 6] = np.nan # TODO: make thresholds flexible
-            P_val_Mahal[P_val_Mahal>12] = 12
+            P_val_mahal[np.isnan(mahalSquared_of_maxProbClass) == False] = -np.log10(P_val_mahal[np.isnan(mahalSquared_of_maxProbClass) == False])
+
+            # Threshold to mahal_thresh_max and mahal_thresh_min
+            P_val_mahal[P_val_mahal<mahal_thresh_min] = np.nan
+            P_val_mahal[P_val_mahal>mahal_thresh_max] = mahal_thresh_max
             
             # Assign to matrix
-            uncertainty_Mahal = P_val_Mahal
+            uncertainty_mahal = P_val_mahal
 
     else:
-        uncertainty_Mahal = False
+        uncertainty_mahal = False
     
-    # return uncertainty maps
-    return uncertainty_apost, uncertainty_Mahal
+
+    return uncertainty_apost, uncertainty_mahal
 
 # -------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------- #
