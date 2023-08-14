@@ -48,7 +48,7 @@ def get_mahalanobis_distance(
     # get number of classes
     n_classes = mu_vec.shape[0]
 
-    logger.debug(f'Input data has {n_classes} classes')
+    logger.debug(f'input data has {n_classes} classes')
 
     # define empty output matrix
     mahal_test  = np.empty((X_test.shape[0],mu_vec.shape[0]))
@@ -97,7 +97,7 @@ def uncertainty(
     mahal_thresh_min = 6,
     mahal_thresh_max = 12,
     mahal_discrete_thresholds = np.array([6, 8, 10, 12]),
-    apost_discrete_thresholds = 'default',
+    apost_discrete_thresholds = ['default'],
 ):
 
     """
@@ -136,8 +136,8 @@ def uncertainty(
 
     mahal_thresh_min : minimum threshold for mahalanobis distance (default=6)
     mahal_thresh_max : maximum threshold for mahalanobis distance (default=12)
-    mahal_dicrete_thresholds : np.array with thresholds for discretization of mahal uncertainty (default: np.array([6, 8, 10, 12]))
-    apost_dicrete_thresholds : thresholds for discretization of apost uncertainty (default: depending on uncertainty_measure)
+    mahal_discrete_thresholds : np.array with thresholds for discretization of mahal uncertainty (default: np.array([6, 8, 10, 12]))
+    apost_discrete_thresholds : thresholds for discretization of apost uncertainty (default: depending on uncertainty_measure)
 
     Outputs
     - Uncertainty image based on the chosen apost uncertainty measure
@@ -147,11 +147,26 @@ def uncertainty(
     """
 
     N, n_classes = probs_img.shape
-    
+
+    uncertainty_measure_choices = [
+        'Entropy',
+        'entropy',
+        'Apost_max',
+        'apost_max',
+        'Diff_1_2',
+        'diff_1_2'
+    ]
+
     """
         Uncertainty based on apost probabilities of different classes
     """
     if DO_apost_uncertainty:
+
+        if apost_uncertainty_meausure not in uncertainty_measure_choices:
+            logger.error(f'Invalid choice for apost_uncertainty_meausure: {apost_uncertainty_meausure}')
+            logger.error(f'Valid choices are: {uncertainty_measure_choices}')
+            uncertainty_apost = False
+
 
         # Valid mask can be deduced from the pixels that are NaN in probs_img
         valid_mask = np.ones(N).astype(int)
@@ -188,7 +203,8 @@ def uncertainty(
         All methods are scaled to [0,1] with low values indicating 
         low uncertainty in the classification.
         """
-        if apost_uncertainty_meausure == "Entropy":            
+
+        if apost_uncertainty_meausure in ["Entropy", "entropy"]:
             # Define entropy-based uncertainty measure, which is based on apost 
             # probabilities of all classes.
             # Initially set all to zero to avoid problems in the summation. At the end,
@@ -199,7 +215,10 @@ def uncertainty(
             #             the probability to zero for all but one classes.
             #      1      For pixels with so extreme measurement values so that the classifier rounds the 
             #             the probability to zero for all classes
-            #      <0,1>  apost probability of most probable class 
+            #      <0,1>  apost probability of most probable class
+
+            logger.debug(f'apost_uncertainty measure is: {apost_uncertainty_meausure}')
+
             uncer_entropy = np.zeros(N)
             for classy in range(n_classes):
                 
@@ -226,16 +245,18 @@ def uncertainty(
             uncer_entropy[apost_max_img==0] = 1
         
             # Assign threshold values for discretization of uncertainty
-            if apost_discrete_thresholds == 'default':
+            if apost_discrete_thresholds[0] == 'default':
                 apost_uncertainty_thresholds = [0.469, 0.722, 0.881, 0.971]
             else:
-                apost_uncertainty_thresholds = apost_dicrete_thresholds
+                apost_uncertainty_thresholds = apost_discrete_thresholds
 
             # Assign name used below for uncertainty variable
             uncertainty_apost = uncer_entropy
             
-        if apost_uncertainty_meausure == "Apost_max":
-            
+        if apost_uncertainty_meausure in ["Apost_max", "apost_max"]:
+
+            logger.debug(f'apost_uncertainty measure is: {apost_uncertainty_meausure}')
+
             # Reasonable cut-off might depend on number of classes
             uncer_apost_max  = 1 - apost_max_img
             
@@ -246,15 +267,17 @@ def uncertainty(
             uncer_apost_max = uncer_apost_max/(1-1/n_classes)
             
             # Assign threshold values for discretization of uncertainty
-            if apost_discrete_thresholds == 'default':
+            if apost_discrete_thresholds[0] == 'default':
                 apost_uncertainty_thresholds = [0.2, 0.4, 0.6, 0.8]
             else:
-                apost_uncertainty_thresholds = apost_dicrete_thresholds
+                apost_uncertainty_thresholds = apost_discrete_thresholds
             
             # Assign name used below for uncertainty variable
             uncertainty_apost = uncer_apost_max
 
-        if apost_uncertainty_meausure == "Diff_1_2":     
+        if apost_uncertainty_meausure in ["Diff_1_2", "diff_1_2"]:     
+
+            logger.debug(f'apost_uncertainty measure is: {apost_uncertainty_meausure}')
 
             # Reasonable cut-off might depend on number of classes   
             
@@ -268,10 +291,10 @@ def uncertainty(
             uncer_diff_1_2 = 1 - Diff_1_2
 
             # Assign threshold values for discretization of uncertainty
-            if apost_discrete_thresholds == 'default':
+            if apost_discrete_thresholds[0] == 'default':
                 apost_uncertainty_thresholds = [0.2, 0.4, 0.6, 0.8]
             else:
-                apost_uncertainty_thresholds = apost_dicrete_thresholds
+                apost_uncertainty_thresholds = apost_discrete_thresholds
             
             # Assign name used below for uncertainty variable
             uncertainty_apost = uncer_diff_1_2
@@ -294,12 +317,15 @@ def uncertainty(
             certain pixels.
             """
 
+            logger.debug('discretizing apost_uncertainty')
+            logger.debug(f'discretization levels: {apost_uncertainty_thresholds}')
+
             uncertainty_apost_levels_img = np.copy(uncertainty_apost)
 
             for apost_uncertainty_thresholds_curr in apost_uncertainty_thresholds:
-                uncertainty_apost_levels_img[ uncertainty_apost > apost_uncertainty_thresholds_curr] = apost_uncertainty_thresholds_curr
+                uncertainty_apost_levels_img[uncertainty_apost>apost_uncertainty_thresholds_curr] = apost_uncertainty_thresholds_curr
             # Set uncertainty pixels below lowest threshold to nan
-            uncertainty_apost_levels_img[ uncertainty_apost_levels_img < apost_uncertainty_thresholds[0] ] = np.nan
+            uncertainty_apost_levels_img[uncertainty_apost_levels_img<apost_uncertainty_thresholds[0] ] = np.nan
     
             # Assign name used below for uncertainty variable
             uncertainty_apost = uncertainty_apost_levels_img

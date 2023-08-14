@@ -167,7 +167,7 @@ def classify_S1_image_from_feature_folder(
     # PREPARE UNCERTAINTY ESTIMATION
 
     if uncertainties:
-        logger.debug('uncertainties is set to "True"')
+        logger.info('Uncertainties is set to "True"')
 
         # extract clf parameters needed for uncertainties
         if clf_type == 'gaussian_IA':
@@ -196,7 +196,7 @@ def classify_S1_image_from_feature_folder(
         uncertainty_params['mahal_thresh_min'] = 6
         uncertainty_params['mahal_thresh_max'] = 12
         uncertainty_params['mahal_discrete_thresholds'] = np.array([6, 8, 10, 12])
-        uncertainty_params['apost_discrete_thresholds'] = 'default'
+        uncertainty_params['apost_discrete_thresholds'] = ['default']
 
         valid_uncertainty_keys = uncertainty_params.keys()
 
@@ -206,7 +206,7 @@ def classify_S1_image_from_feature_folder(
             logger.info('Using default parameters for uncertainty estimation')
 
         elif type(uncertainty_dict) == dict:
-            logger.info('Setting uncertainty parameters from uncertainty_dict')
+            logger.info('Using parameters from uncertainty_dict for uncertainty estimation')
 
             uncertainty_keys = uncertainty_dict.keys()
             logger.debug(f'uncertainty_dict.keys(): {uncertainty_keys}')
@@ -266,7 +266,6 @@ def classify_S1_image_from_feature_folder(
 
         else:
             # check that valid_mask dimensions match feature dimensions
-            ds =  gdal.Open((feat_folder / 'valid.img').as_posix(), gdal.GA_ReadOnly)
             Nx_valid, Ny_valid = classification_utils.get_image_dimensions((feat_folder / 'valid.img').as_posix())
             if not Nx == Nx_valid or not Ny == Ny_valid:
                 logger.error(f'valid_mask dimensions do not match featured imensions')
@@ -292,7 +291,7 @@ def classify_S1_image_from_feature_folder(
     # CHECK IA MASK
 
     if clf_type == 'gaussian_IA':
-        logger.info('Classifier is using IA information')
+        logger.info('Classifier requires IA information')
 
         # check that IA.img exists
         if 'IA.img' not in existing_features:
@@ -310,15 +309,13 @@ def classify_S1_image_from_feature_folder(
         logger.info('Classifier is not using IA information')
 
 # -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
 
     # initialize data dict and/or data list
     data_dict = dict()
     data_list = []
 
     # logger
-    logger.info('Memory mapping required data')
+    logger.info('Memory mapping all required data')
 
 # --------------------- #
 
@@ -374,8 +371,6 @@ def classify_S1_image_from_feature_folder(
             data_dict[f] = np.memmap(f'{feat_folder.as_posix()}/{f}.img', dtype=np.float32, mode='r', shape=(N))
  
 # -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
 
     # initialize labels and probabilities
     labels_img = np.zeros(N)
@@ -392,15 +387,15 @@ def classify_S1_image_from_feature_folder(
     # logger
     logger.info('Performing block-wise processing of memory-mapped data')
     logger.info(f'block-size: {block_size}')
-    logger.info(f'n_blocks:   {n_blocks}')
+    logger.info(f'Number of blocks: {n_blocks}')
 
     # for progress report at every 10%
     log_percs   = np.array([0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9])
     perc_blocks = np.ceil(np.array(n_blocks)*log_percs).astype(int)
 
 # -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
+
+    # CLASSIFY
 
     # loop over all blocks
     for block in np.arange(n_blocks):
@@ -458,11 +453,11 @@ def classify_S1_image_from_feature_folder(
     logger.info('Finished classification')
 
 # -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
 
     if uncertainties:
+
         logger.info('Estimating apost and mahal uncertainties')
+
         uncertainty_apost, uncertainty_mahal = uncertainty_utils.uncertainty(
             probs_img,
             mahal_img,
@@ -478,37 +473,39 @@ def classify_S1_image_from_feature_folder(
         )
 
 # -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
 
     # reshape to image geometry
     labels_img = np.reshape(labels_img, shape)
 
     if uncertainties:
-        uncertainty_mahal  = np.reshape(uncertainty_mahal, shape)
-        uncertainty_apost  = np.reshape(uncertainty_apost, shape)
+        if uncertainty_mahal is not False:
+            uncertainty_mahal  = np.reshape(uncertainty_mahal, shape)
+        if uncertainty_apost is not False:
+            uncertainty_apost  = np.reshape(uncertainty_apost, shape)
 
-# -------------------------------------------------------------------------- #
-# -------------------------------------------------------------------------- #
+        logger.info('Finished uncertainty estimation')
+
 # -------------------------------------------------------------------------- #
 
     # create result_folder if needed
     result_folder.mkdir(parents=True, exist_ok=True)
 
+    # write labels
     output_labels = gdal.GetDriverByName('Envi').Create(result_path.as_posix(), Nx, Ny, 1, gdal.GDT_Byte)
     output_labels.GetRasterBand(1).WriteArray(labels_img)
     output_labels.FlushCache()
 
 
+    # write uncertainties
     if uncertainties:
-
-        output_mahal = gdal.GetDriverByName('Envi').Create(result_path_mahal.as_posix(), Nx, Ny, 1, gdal.GDT_Float32)
-        output_mahal.GetRasterBand(1).WriteArray(uncertainty_mahal)
-        output_mahal.FlushCache()
-
-        output_apost = gdal.GetDriverByName('Envi').Create(result_path_apost.as_posix(), Nx, Ny, 1, gdal.GDT_Float32)
-        output_apost.GetRasterBand(1).WriteArray(uncertainty_apost)
-        output_apost.FlushCache()
+        if uncertainty_mahal is not False:
+            output_mahal = gdal.GetDriverByName('Envi').Create(result_path_mahal.as_posix(), Nx, Ny, 1, gdal.GDT_Float32)
+            output_mahal.GetRasterBand(1).WriteArray(uncertainty_mahal)
+            output_mahal.FlushCache()
+        if uncertainty_apost is not False:
+            output_apost = gdal.GetDriverByName('Envi').Create(result_path_apost.as_posix(), Nx, Ny, 1, gdal.GDT_Float32)
+            output_apost.GetRasterBand(1).WriteArray(uncertainty_apost)
+            output_apost.FlushCache()
 
     logger.info(f'Result writtten to {result_path}')
 
