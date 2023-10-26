@@ -375,11 +375,12 @@ def classify_S1_image_from_feature_folder(
     # initialize labels and probabilities
     labels_img = np.zeros(N)
 
-    # for uncertainties
-    mahal_img  = np.zeros((N,n_classes))
-    mahal_img.fill(np.nan)
-    probs_img  = np.zeros((N,n_classes))
-    probs_img.fill(np.nan)
+    if uncertainties:
+        # for uncertainties
+        mahal_img  = np.zeros((N,n_classes))
+        mahal_img.fill(np.nan)
+        probs_img  = np.zeros((N,n_classes))
+        probs_img.fill(np.nan)
 
     # find number of blocks from block_size
     n_blocks   = int(np.ceil(N/block_size))
@@ -429,20 +430,34 @@ def classify_S1_image_from_feature_folder(
 
         # predict labels where valid==1
         if clf_type == 'gaussian_IA':
-            labels_img[idx_start:idx_end][valid_block==1], probs_img[idx_start:idx_end][valid_block==1] = clf.predict(X_block_valid, IA_block_valid)
 
-            # for uncertainties
+
+            
             if uncertainties:
+                labels_img[idx_start:idx_end][valid_block==1], probs_img[idx_start:idx_end][valid_block==1] = clf.predict(X_block_valid, IA_block_valid)
+
+                # for uncertainties
                 logger.debug('Estimating mahal_img for current block')
                 mahal_img[idx_start:idx_end][valid_block==1] = uncertainty_utils.get_mahalanobis_distance(X_block_valid, mu_vec_all_classes, cov_mat_all_classes, IA_test=IA_block_valid, IA_0=IA_0, IA_slope=IA_slope)
+	
+            else:
+                labels_img[idx_start:idx_end][valid_block==1], _ = clf.predict(X_block_valid, IA_block_valid)
+
+
 
         elif clf_type == 'gaussian':
-            labels_img[idx_start:idx_end][valid_block==1],probs_img[idx_start:idx_end][valid_block==1] = clf.predict(X_block_valid)
 
-            # for uncertainties
             if uncertainties:
+                labels_img[idx_start:idx_end][valid_block==1],probs_img[idx_start:idx_end][valid_block==1] = clf.predict(X_block_valid)
+
+                # for uncertainties
                 logger.debug('Estimating mahal_img for current block')
                 mahal_img[idx_start:idx_end][valid_block==1] = uncertainty_utils.get_mahalanobis_distance(X_block_valid, mu_vec_all_classes, cov_mat_all_classes)
+
+            else:
+                labels_img[idx_start:idx_end][valid_block==1], _ = clf.predict(X_block_valid)
+
+
 
         else:
             logger.error('This clf type is not implemented yet')
