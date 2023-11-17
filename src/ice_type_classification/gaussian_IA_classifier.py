@@ -544,8 +544,18 @@ def make_gaussian_clf_object_from_params_dict(gaussian_params_dict):
     clf.n_feat          = gaussian_params_dict['n_feat']
     clf.trained_classes = gaussian_params_dict['trained_classes']
 
+
     # create the mvn objects for the installed scipy version
-    clf.class_mvn       = gaussian_params_dict['class_mvn']
+    # mvn requires mu and Sigma
+
+    clf.class_mvn = dict()
+
+    for cl in clf.trained_classes:
+        clf.class_mvn[str(cl)] = mvn(clf.mu[cl-1,:],clf.Sigma[cl-1,:,:])
+
+    # OLD, delete if the other stuff works
+    # create the mvn objects for the installed scipy version
+    ##clf.class_mvn       = gaussian_params_dict['class_mvn']
 
     return clf
 
